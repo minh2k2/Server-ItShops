@@ -50,7 +50,7 @@ def home():
 if __name__ == "__main__":
     app.run(debug=True)
 # Lay sanr pham
-@app.router('/card', methods=['GET'])
+@app.route('/card', methods=['GET'])
 
 def get_card():
     con= get_db_connection()
