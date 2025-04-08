@@ -65,16 +65,39 @@ def add_to_cart():
         # Giả sử bạn đã có hàm get_db_connection()
         con = get_db_connection()
         cursor = con.cursor()
+        check_query = "SELECT * FROM products WHERE id = %s"
+        cursor.execute(check_query, (product_id,))
+        result = cursor.fetchone()
 
-        insert_query = "INSERT INTO cart (product_id, quantity) VALUES (%s, %s)"
-        cursor.execute(insert_query, (product_id, quantity))
+        if result:
+            update_query = "UPDATE cart SET quantity = quantity + %s WHERE product_id = %s"
+            cursor.execute(update_query, (quantity, product_id))
+        else:
+            insert_query = "INSERT INTO cart (product_id, quantity) VALUES (%s, %s)"
+            cursor.execute(insert_query, (product_id, quantity))
+
         con.commit()
 
         cursor.close()
         con.close()
 
         return jsonify({"message": "Added to cart"}), 201
+@app.route('/showcart', methods=['GET'])
+def show_cart():
+    try:
+        con = get_db_connection()
+        cursor = con.cursor(dictionary=True)  # Trả về dictionary thay vì tuple
+        sql = "SELECT * FROM cart;"
+        cursor.execute(sql)
+        cart_items = cursor.fetchall()  # Lấy toàn bộ dữ liệu
 
+        cursor.close()
+        con.close()
+
+        return jsonify({"cart": cart_items}), 200  # Trả về JSON
+
+    except mysql.connector.Error as e:
+        return jsonify({"error": str(e)}), 500
 if __name__ == "__main__":
     app.run(debug=True)
     
