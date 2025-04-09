@@ -51,53 +51,82 @@ def home():
 # if __name__ == "__main__":
 #     app.run(debug=True)
 # Lay sanr pham
-@app.route('/cart', methods=['POST','GET'])
+@app.route('/cart', methods=['POST'])
 def add_to_cart():
-    # return jsonify({"message": "Cart API"}), 200
+    data = request.get_json()
+    if not data or 'product_id' not in data:
+        return jsonify({"error": "Missing 'product_id' in request body"}), 400
 
-        data = request.get_json()  # Lấy dữ liệu JSON từ request body
-        if not data or 'product_id' not in data:
-            return jsonify({"error": "Missing 'product_id' in request body"}), 400
+    product_id = data['product_id']
+    quantity = data.get('quantity', 1)
 
-        product_id = data['product_id']
-        quantity = data.get('quantity', 1)
+    con = get_db_connection()
+    cursor = con.cursor()
 
-        # Giả sử bạn đã có hàm get_db_connection()
-        con = get_db_connection()
-        cursor = con.cursor()
-        check_query = "SELECT * FROM products WHERE id = %s"
-        cursor.execute(check_query, (product_id,))
-        result = cursor.fetchone()
+    # Kiểm tra xem sản phẩm đã có trong giỏ hàng chưa
+    check_query = "SELECT * FROM cart WHERE product_id = %s"
+    cursor.execute(check_query, (product_id,))
+    result = cursor.fetchone()
 
-        if result:
-            update_query = "UPDATE cart SET quantity = quantity + %s WHERE product_id = %s"
-            cursor.execute(update_query, (quantity, product_id))
-        else:
-            insert_query = "INSERT INTO cart (product_id, quantity) VALUES (%s, %s)"
-            cursor.execute(insert_query, (product_id, quantity))
+    if result:
+        update_query = "UPDATE cart SET quantity = quantity + %s WHERE product_id = %s"
+        cursor.execute(update_query, (quantity, product_id))
+    else:
+        insert_query = "INSERT INTO cart (product_id, quantity) VALUES (%s, %s)"
+        cursor.execute(insert_query, (product_id, quantity))
 
-        con.commit()
+    con.commit()
+    cursor.close()
+    con.close()
 
-        cursor.close()
-        con.close()
+    return jsonify({"message": "Added to cart"}), 201
 
-        return jsonify({"message": "Added to cart"}), 201
 @app.route('/showcart', methods=['GET'])
 def show_cart():
     try:
         con = get_db_connection()
         cursor = con.cursor(dictionary=True)  # Trả về dictionary thay vì tuple
-        sql = "SELECT * FROM cart;"
+        sql = """           SELECT 
+                cart.id,
+                products.name,
+                products.image,
+                products.price,
+                cart.quantity,
+                cart.product_id
+            FROM cart
+            JOIN products ON cart.product_id = products.id
+            """
         cursor.execute(sql)
         cart_items = cursor.fetchall()  # Lấy toàn bộ dữ liệu
 
         cursor.close()
         con.close()
 
-        return jsonify({"cart": cart_items}), 200  # Trả về JSON
+        return jsonify({"carts": cart_items}), 200  # Trả về JSON
 
     except mysql.connector.Error as e:
         return jsonify({"error": str(e)}), 500
+@app.route('/deletecart', methods=['DELETE'])
+def delete_cart_item():
+    data = request.get_json()
+    if not data or 'product_id' not in data:
+        return jsonify({"error": "Missing 'product_id' in request body"}), 400
+
+    product_id = data['product_id']
+
+    con = get_db_connection()
+    cursor = con.cursor()
+
+    # Xóa sản phẩm khỏi giỏ hàng
+    delete_query = "DELETE FROM cart WHERE product_id = %s"
+    cursor.execute(delete_query, (product_id,))
+
+    con.commit()
+    cursor.close()
+    con.close()
+
+    return jsonify({"message": "Deleted from cart"}), 200
+
 if __name__ == "__main__":
     app.run(debug=True)
     
