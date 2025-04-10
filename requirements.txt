@@ -1,0 +1,4 @@
+flask
+uvicorn[standard]
+flask-cors
+mysql-connector-python

@@ -2,7 +2,7 @@ import time
 from flask import Flask, jsonify, request
 import mysql.connector
 from flask_cors import CORS # thêm vào thư viện CORS
-
+import os
 
 app = Flask(__name__)
 CORS (app)
@@ -12,12 +12,11 @@ CORS (app)
 # Hàm kết nối MySQL
 def get_db_connection():
     return mysql.connector.connect(
-        host="localhost",   
-        user="root",
-        password="2002",
-        database="itshopsdata"
+        host=os.getenv("MYSQL_HOST", "localhost"),
+        user=os.getenv("MYSQL_USER", "root"),
+        password=os.getenv("MYSQL_PASSWORD", "2002"),
+        database=os.getenv("MYSQL_DATABASE", "itshopsdata")
     )
-
 @app.route('/getproducts', methods=['GET'])
 def get_products():
     try:
@@ -128,5 +127,5 @@ def delete_cart_item():
     return jsonify({"message": "Deleted from cart"}), 200
 
 if __name__ == "__main__":
-    app.run(debug=True)
+     app.run(debug=True, host="0.0.0.0", port=5000)
     
