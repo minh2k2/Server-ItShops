@@ -125,6 +125,57 @@ def delete_cart_item():
     con.close()
 
     return jsonify({"message": "Deleted from cart"}), 200
+@app.route('/getproducts/<int:product_id>', methods=['GET'])
+def get_product_by_id(product_id):
+    try:
+        con = get_db_connection()
+        cursor = con.cursor(dictionary=True)  # Trả về dictionary thay vì tuple
+        sql = "SELECT * FROM products WHERE id = %s;"
+        cursor.execute(sql, (product_id,))
+        product = cursor.fetchone()  # Lấy sản phẩm theo ID
+
+        cursor.close()
+        con.close()
+
+        if product:
+            return jsonify({"product": product}), 200  # Trả về JSON
+        else:
+            return jsonify({"error": "Product not found"}), 404
+
+    except mysql.connector.Error as e:
+        return jsonify({"error": str(e)}), 500
+@app.route('/user', methods=['POST'])
+def add_user():
+    data = request.get_json()
+    if not data or 'username' not in data or 'password' not in data:
+        return jsonify({"error": "Missing 'username' or 'password' in request body"}), 400
+
+    username = data['username']
+    password = data['password']
+    email = data.get('email')
+    full_name = data.get('full_name')
+
+    con = get_db_connection()
+    cursor = con.cursor()
+
+    # Kiểm tra xem người dùng đã tồn tại chưa
+    check_query = "SELECT * FROM users WHERE username = %s"
+    cursor.execute(check_query, (username,))
+    result = cursor.fetchone()
+
+    if result:
+        return jsonify({"error": "User already exists"}), 409
+
+    insert_query = "INSERT INTO users (username, password, email, full_name) VALUES (%s, %s, %s, %s)"
+    # Thay đổi để thêm email và full_name vào bảng users
+    cursor.execute(insert_query, (username, password, data.get('email'), data.get('full_name')))
+    # Nếu bạn muốn mã hóa mật khẩu, hãy sử dụng bcrypt hoặc thư viện tương tự ở đây
+
+    con.commit()
+    cursor.close()
+    con.close()
+
+    return jsonify({"message": "User created"}), 201
 
 if __name__ == "__main__":
      app.run(debug=True, host="0.0.0.0", port=5000)
