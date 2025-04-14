@@ -1,182 +1,186 @@
+
 import time
 from flask import Flask, jsonify, request
-import mysql.connector
-from flask_cors import CORS # thêm vào thư viện CORS
-import os
+from flask_sqlalchemy import SQLAlchemy
+from flask_cors import CORS
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-CORS (app)
+CORS(app)
 
+# Cấu hình cơ sở dữ liệu
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+mysqlconnector://root:2002@localhost/itshopsdata'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+db = SQLAlchemy(app)
 
-# Hàm kết nối MySQL
-def get_db_connection():
-    return mysql.connector.connect(
-        host=os.getenv("MYSQL_HOST", "localhost"),
-        user=os.getenv("MYSQL_USER", "root"),
-        password=os.getenv("MYSQL_PASSWORD", "2002"),
-        database=os.getenv("MYSQL_DATABASE", "itshopsdata")
-    )
-@app.route('/getproducts', methods=['GET'])
-def get_products():
-    try:
-        con = get_db_connection()
-        cursor = con.cursor(dictionary=True)  # Trả về dictionary thay vì tuple
-        sql = "SELECT * FROM products;"
-        cursor.execute(sql)
-        products = cursor.fetchall()  # Lấy toàn bộ dữ liệu
+# Model
+class Product(db.Model):
+    __tablename__ = 'products'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255))
+    image = db.Column(db.String(255))
+    details = db.Column(db.Text)
+    price = db.Column(db.Float)
 
-        cursor.close()
-        con.close()
+class Cart(db.Model):
+    __tablename__ = 'cart'
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'))
+    quantity = db.Column(db.Integer)
+    product = db.relationship('Product')
 
-        return jsonify({"products": products}), 200  # Trả về JSON
+class User(db.Model):
+    __tablename__ = 'users'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(255), unique=True)
+    password = db.Column(db.String(255))
+    email = db.Column(db.String(255))
+    full_name = db.Column(db.String(255))
 
-    except mysql.connector.Error as e:
-        return jsonify({"error": str(e)}), 500
+# Hàm convert object -> dict
+def product_to_dict(product):
+    return {
+        "id": product.id,
+        "name": product.name,
+        "image": product.image,
+        "details": product.details,
+        "price": product.price
+    }
 
-# if __name__ == "__main__":
-#     app.run(debug=True)
-    
-@app.route('/time')
-def get_current_time():
-    return {'time': time.time()}
-
-# if __name__ == '__main__':
-#    app.run(debug=True, port=5000)
+# Route
 @app.route("/")
 def home():
     return "ItShops"
 
-# if __name__ == "__main__":
-#     app.run(debug=True)
-# Lay sanr pham
+@app.route("/time")
+def get_current_time():
+    return {"time": time.time()}
+
+@app.route('/getproducts', methods=['GET'])
+def get_products():
+    products = Product.query.all()
+    return jsonify({"products": [product_to_dict(p) for p in products]}), 200
+
+@app.route('/getproducts/<int:product_id>', methods=['GET'])
+def get_product_by_id(product_id):
+    product = Product.query.get(product_id)
+    if product:
+        return jsonify({"product": product_to_dict(product)}), 200
+    else:
+        return jsonify({"error": "Product not found"}), 404
+
+@app.route('/search', methods=['GET'])
+def search_products():
+    query = request.args.get('query')
+    if not query:
+        return jsonify({"error": "Thiếu tham số 'query'"}), 400
+    results = Product.query.filter(Product.name.like(f"%{query}%")).all()
+    return jsonify({"products": [product_to_dict(p) for p in results]}), 200
+
 @app.route('/cart', methods=['POST'])
 def add_to_cart():
     data = request.get_json()
-    if not data or 'product_id' not in data:
-        return jsonify({"error": "Missing 'product_id' in request body"}), 400
-
-    product_id = data['product_id']
+    product_id = data.get('product_id')
     quantity = data.get('quantity', 1)
 
-    con = get_db_connection()
-    cursor = con.cursor()
+    if not product_id:
+        return jsonify({"error": "Thiếu 'product_id'"}), 400
 
-    # Kiểm tra xem sản phẩm đã có trong giỏ hàng chưa
-    check_query = "SELECT * FROM cart WHERE product_id = %s"
-    cursor.execute(check_query, (product_id,))
-    result = cursor.fetchone()
-
-    if result:
-        update_query = "UPDATE cart SET quantity = quantity + %s WHERE product_id = %s"
-        cursor.execute(update_query, (quantity, product_id))
+    cart_item = Cart.query.filter_by(product_id=product_id).first()
+    if cart_item:
+        cart_item.quantity += quantity
     else:
-        insert_query = "INSERT INTO cart (product_id, quantity) VALUES (%s, %s)"
-        cursor.execute(insert_query, (product_id, quantity))
-
-    con.commit()
-    cursor.close()
-    con.close()
-
+        new_item = Cart(product_id=product_id, quantity=quantity)
+        db.session.add(new_item)
+    db.session.commit()
     return jsonify({"message": "Added to cart"}), 201
 
 @app.route('/showcart', methods=['GET'])
 def show_cart():
-    try:
-        con = get_db_connection()
-        cursor = con.cursor(dictionary=True)  # Trả về dictionary thay vì tuple
-        sql = """           SELECT 
-                cart.id,
-                products.name,
-                products.image,
-                products.price,
-                cart.quantity,
-                cart.product_id
-            FROM cart
-            JOIN products ON cart.product_id = products.id
-            """
-        cursor.execute(sql)
-        cart_items = cursor.fetchall()  # Lấy toàn bộ dữ liệu
+    carts = Cart.query.all()
+    result = []
+    for item in carts:
+        result.append({
+            "id": item.id,
+            "product_id": item.product_id,
+            "quantity": item.quantity,
+            "name": item.product.name,
+            "image": item.product.image,
+            "price": item.product.price
+        })
+    return jsonify({"carts": result}), 200
 
-        cursor.close()
-        con.close()
-
-        return jsonify({"carts": cart_items}), 200  # Trả về JSON
-
-    except mysql.connector.Error as e:
-        return jsonify({"error": str(e)}), 500
 @app.route('/deletecart', methods=['DELETE'])
 def delete_cart_item():
     data = request.get_json()
-    if not data or 'product_id' not in data:
-        return jsonify({"error": "Missing 'product_id' in request body"}), 400
+    product_id = data.get('product_id')
 
-    product_id = data['product_id']
+    if not product_id:
+        return jsonify({"error": "Thiếu 'product_id'"}), 400
 
-    con = get_db_connection()
-    cursor = con.cursor()
+    item = Cart.query.filter_by(product_id=product_id).first()
+    if item:
+        db.session.delete(item)
+        db.session.commit()
+        return jsonify({"message": "Deleted from cart"}), 200
+    else:
+        return jsonify({"error": "Không tìm thấy sản phẩm trong giỏ hàng"}), 404
 
-    # Xóa sản phẩm khỏi giỏ hàng
-    delete_query = "DELETE FROM cart WHERE product_id = %s"
-    cursor.execute(delete_query, (product_id,))
-
-    con.commit()
-    cursor.close()
-    con.close()
-
-    return jsonify({"message": "Deleted from cart"}), 200
-@app.route('/getproducts/<int:product_id>', methods=['GET'])
-def get_product_by_id(product_id):
-    try:
-        con = get_db_connection()
-        cursor = con.cursor(dictionary=True)  # Trả về dictionary thay vì tuple
-        sql = "SELECT * FROM products WHERE id = %s;"
-        cursor.execute(sql, (product_id,))
-        product = cursor.fetchone()  # Lấy sản phẩm theo ID
-
-        cursor.close()
-        con.close()
-
-        if product:
-            return jsonify({"product": product}), 200  # Trả về JSON
-        else:
-            return jsonify({"error": "Product not found"}), 404
-
-    except mysql.connector.Error as e:
-        return jsonify({"error": str(e)}), 500
 @app.route('/user', methods=['POST'])
 def add_user():
     data = request.get_json()
-    if not data or 'username' not in data or 'password' not in data:
-        return jsonify({"error": "Missing 'username' or 'password' in request body"}), 400
-
-    username = data['username']
-    password = data['password']
+    username = data.get('username')
+    password = data.get('password')
     email = data.get('email')
     full_name = data.get('full_name')
 
-    con = get_db_connection()
-    cursor = con.cursor()
+    if not username or not password:
+        return jsonify({"error": "Thiếu 'username' hoặc 'password'"}), 400
 
-    # Kiểm tra xem người dùng đã tồn tại chưa
-    check_query = "SELECT * FROM users WHERE username = %s"
-    cursor.execute(check_query, (username,))
-    result = cursor.fetchone()
+    if User.query.filter_by(username=username).first():
+        return jsonify({"error": "Người dùng đã tồn tại"}), 409
 
-    if result:
-        return jsonify({"error": "User already exists"}), 409
+    hashed_password = generate_password_hash(password)
+    new_user = User(username=username, password=hashed_password, email=email, full_name=full_name)
+    db.session.add(new_user)
+    db.session.commit()
 
-    insert_query = "INSERT INTO users (username, password, email, full_name) VALUES (%s, %s, %s, %s)"
-    # Thay đổi để thêm email và full_name vào bảng users
-    cursor.execute(insert_query, (username, password, data.get('email'), data.get('full_name')))
-    # Nếu bạn muốn mã hóa mật khẩu, hãy sử dụng bcrypt hoặc thư viện tương tự ở đây
+    return jsonify({
+        "message": "Tạo người dùng thành công",
+        "user": {
+            "username": username,
+            "email": email,
+            "full_name": full_name
+        }
+    }), 201
 
-    con.commit()
-    cursor.close()
-    con.close()
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
 
-    return jsonify({"message": "User created"}), 201
+    if not username or not password:
+        return jsonify({"error": "Thiếu 'username' hoặc 'password'"}), 400
+
+    user = User.query.filter_by(username=username).first()
+
+    if user and check_password_hash(user.password, password):
+        return jsonify({
+            "message": "Đăng nhập thành công",
+            "user": {
+                "username": user.username,
+                "email": user.email,
+                "full_name": user.full_name
+            }
+        }), 200
+    else:
+        return jsonify({"error": "Tên người dùng hoặc mật khẩu không đúng"}), 401
+
+# Tạo bảng nếu chưa có (chạy 1 lần đầu tiên)
+with app.app_context():
+    db.create_all()
 
 if __name__ == "__main__":
-     app.run(debug=True, host="0.0.0.0", port=5000)
-    
+    app.run(debug=True, host="0.0.0.0", port=5000)
