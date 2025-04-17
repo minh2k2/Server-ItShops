@@ -4,9 +4,16 @@ from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
+
+
+
 
 app = Flask(__name__)
 CORS(app)
+
+app.config['JWT_SECRET_KEY'] = 'your-secret-key'  # Đặt bí mật thật an toàn
+jwt = JWTManager(app)
 
 # Cấu hình cơ sở dữ liệu
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+mysqlconnector://root:2002@localhost/itshopsdata'
@@ -27,6 +34,7 @@ class Cart(db.Model):
     __tablename__ = 'cart'
     id = db.Column(db.Integer, primary_key=True)
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'))
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     quantity = db.Column(db.Integer)
     product = db.relationship('Product')
 
@@ -79,26 +87,46 @@ def search_products():
     return jsonify({"products": [product_to_dict(p) for p in results]}), 200
 
 @app.route('/cart', methods=['POST'])
+@jwt_required()
 def add_to_cart():
-    data = request.get_json()
-    product_id = data.get('product_id')
-    quantity = data.get('quantity', 1)
+    try:
+        user_id = int(get_jwt_identity())
 
-    if not product_id:
-        return jsonify({"error": "Thiếu 'product_id'"}), 400
+        data = request.get_json()
+        product_id = data.get('product_id')
+        quantity = data.get('quantity', 1)
 
-    cart_item = Cart.query.filter_by(product_id=product_id).first()
-    if cart_item:
-        cart_item.quantity += quantity
-    else:
-        new_item = Cart(product_id=product_id, quantity=quantity)
-        db.session.add(new_item)
-    db.session.commit()
-    return jsonify({"message": "Added to cart"}), 201
+        if not product_id:
+            return jsonify({"error": "Thiếu 'product_id'"}), 400
+
+        try:
+            quantity = int(quantity)
+        except (ValueError, TypeError):
+            return jsonify({"error": "'quantity' phải là số nguyên"}), 400
+
+        cart_item = Cart.query.filter_by(product_id=product_id, user_id=user_id).first()
+        if cart_item:
+            cart_item.quantity += quantity
+        else:
+            new_item = Cart(product_id=product_id, quantity=quantity, user_id=user_id)
+            db.session.add(new_item)
+
+        db.session.commit()
+        return jsonify({"message": "Đã thêm vào giỏ hàng"}), 201
+
+    except Exception as e:
+        print("LỖI GIỎ HÀNG:", e)
+        return jsonify({"error": "Lỗi server", "message": str(e)}), 500
+
+
+
 
 @app.route('/showcart', methods=['GET'])
+@jwt_required()
 def show_cart():
-    carts = Cart.query.all()
+    user_id = get_jwt_identity()
+
+    carts = Cart.query.filter_by(user_id=user_id).all()
     result = []
     for item in carts:
         result.append({
@@ -110,6 +138,8 @@ def show_cart():
             "price": item.product.price
         })
     return jsonify({"carts": result}), 200
+
+
 
 @app.route('/deletecart', methods=['DELETE'])
 def delete_cart_item():
@@ -167,8 +197,13 @@ def login():
     user = User.query.filter_by(username=username).first()
 
     if user and check_password_hash(user.password, password):
+        # Chỉ truyền user.id làm identity
+        access_token = create_access_token(identity=str(user.id))  # ép kiểu thành string
+
+
         return jsonify({
             "message": "Đăng nhập thành công",
+            "access_token": access_token,
             "user": {
                 "username": user.username,
                 "email": user.email,
@@ -177,6 +212,7 @@ def login():
         }), 200
     else:
         return jsonify({"error": "Tên người dùng hoặc mật khẩu không đúng"}), 401
+
 
 # Tạo bảng nếu chưa có (chạy 1 lần đầu tiên)
 with app.app_context():
