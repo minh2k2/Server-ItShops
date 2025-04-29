@@ -1,4 +1,8 @@
 flask
+Flask-SQLAlchemy
+Flask-JWT-Extended
+Flask-Migrate
+PyJWT
 uvicorn[standard]
 flask-cors
 mysql-connector-python

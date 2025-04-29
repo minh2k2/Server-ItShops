@@ -5,8 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
-
-
+import os
 
 
 app = Flask(__name__)
@@ -16,7 +15,12 @@ app.config['JWT_SECRET_KEY'] = 'your-secret-key'  # Đặt bí mật thật an t
 jwt = JWTManager(app)
 
 # Cấu hình cơ sở dữ liệu
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+mysqlconnector://root:2002@localhost/itshopsdata'
+app.config['SQLALCHEMY_DATABASE_URI'] = (
+    f"mysql+mysqlconnector://{os.getenv('MYSQL_USER', 'root')}:"
+    f"{os.getenv('MYSQL_PASSWORD', '2002')}@"
+    f"{os.getenv('MYSQL_HOST', 'mysql')}/"
+    f"{os.getenv('MYSQL_DATABASE', 'itshopsdata')}"
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
