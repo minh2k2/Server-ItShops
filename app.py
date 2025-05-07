@@ -17,9 +17,9 @@ jwt = JWTManager(app)
 # Cấu hình cơ sở dữ liệu
 app.config['SQLALCHEMY_DATABASE_URI'] = (
     f"mysql+mysqlconnector://{os.getenv('MYSQL_USER', 'root')}:"
-    f"{os.getenv('MYSQL_PASSWORD', '2002')}@"
-    f"{os.getenv('MYSQL_HOST', 'localhost')}/"
-    f"{os.getenv('MYSQL_DATABASE', 'itshopsdata')}"
+    f"{os.getenv('MYSQL_PASSWORD', 'SjQvMfBiWsxVnJAEjuvqpUjsTHWjIODM')}@"
+    f"{os.getenv('MYSQL_HOST', 'mysql.railway.internal')}/"
+    f"{os.getenv('MYSQL_DATABASE', 'railway')}"
 )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
