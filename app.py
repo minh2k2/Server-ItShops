@@ -18,7 +18,7 @@ jwt = JWTManager(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = (
     f"mysql+mysqlconnector://{os.getenv('MYSQL_USER', 'root')}:"
     f"{os.getenv('MYSQL_PASSWORD', '2002')}@"
-    f"{os.getenv('MYSQL_HOST', 'mysql')}/"
+    f"{os.getenv('MYSQL_HOST', 'localhost')}/"
     f"{os.getenv('MYSQL_DATABASE', 'itshopsdata')}"
 )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
